@@ -6,7 +6,9 @@
 #include <inttypes.h>
 #include <assert.h>
 
-typedef struct m61_statistics stats;
+typedef struct m61_statistics stats_struct;
+
+static stats_struct stats_global = {0, 0, 0, 0, 0, 0, 0, 0 };
 
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
@@ -71,12 +73,13 @@ void* m61_calloc(size_t nmemb, size_t sz, const char* file, int line) {
 }
 
 
+
 /// m61_getstatistics(stats)
 ///    Store the current memory statistics in `*stats`.
 
 void m61_getstatistics(struct m61_statistics* stats) {
     // Stub: set all statistics to enormous numbers
-    memset(stats, 255, sizeof(struct m61_statistics));
+    *stats = stats_global;
     // Your code here.
 }
 
