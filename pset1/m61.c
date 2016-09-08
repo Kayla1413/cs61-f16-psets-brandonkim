@@ -6,6 +6,8 @@
 #include <inttypes.h>
 #include <assert.h>
 
+typedef struct m61_statistics stats;
+
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
 ///    The memory is not initialized. If `sz == 0`, then m61_malloc may
