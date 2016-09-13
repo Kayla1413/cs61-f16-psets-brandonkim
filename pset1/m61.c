@@ -7,6 +7,7 @@
 #include <assert.h>
 
 typedef struct m61_statistics stats_struct;
+typedef struct m61_statistics_metadata stats_meta;
 
 static stats_struct stats_global = {0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -18,8 +19,23 @@ static stats_struct stats_global = {0, 0, 0, 0, 0, 0, 0, 0 };
 
 void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
-    return base_malloc(sz);
+    stats_meta* meta_ptr;
+    void* ret_ptr;
+
+    meta_ptr = base_malloc(sz + sizeof(stats_meta)); // add space for metadata
+    if (meta_ptr == NULL) {
+        stats_global.nfail++;
+        stats_global.fail_size += (int) sz;
+        return meta_ptr;
+    }
+    meta_ptr->alloc_size = sz;
+    // simply updating stats
+    stats_global.nactive++;
+    stats_global.ntotal++;
+    stats_global.active_size += (int) sz;
+    stats_global.total_size += (int) sz;
+    ret_ptr = meta_ptr + 1;
+    return ret_ptr;
 }
 
 
@@ -31,7 +47,12 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 
 void m61_free(void *ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
+    unsigned long long size;
+    stats_meta* meta_ptr = ((stats_meta*) ptr) - sizeof(stats_meta);
+    if (ptr == NULL) return;
+    size = meta_ptr->alloc_size;
+    stats_global.ntotal -= size;
+    stats_global.nactive--;
     base_free(ptr);
 }
 
