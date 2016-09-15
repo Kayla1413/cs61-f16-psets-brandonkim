@@ -22,9 +22,14 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     stats_meta* meta_ptr;
     void* ret_ptr;
     void* end_ptr;  // pointer to end of region, for heap_max
+    
+    if (sizeof(stats_meta) + sz >= sz) {
+        meta_ptr = base_malloc(sz + sizeof(stats_meta)); // add space for metadata
+    } else { 
+        meta_ptr = NULL; //gets rid of always-true warning
+    }
 
-    meta_ptr = base_malloc(sz + sizeof(stats_meta)); // add space for metadata
-    end_ptr = ( (char*) meta_ptr) + sz + sizeof(stats_meta);
+    end_ptr = ((char*) meta_ptr) + sz + sizeof(stats_meta);
 
     if (meta_ptr == NULL) {
         stats_global.nfail++;
@@ -83,6 +88,7 @@ void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
         // Copy the data from `ptr` into `new_ptr`.
         // To do that, we must figure out the size of allocation `ptr`.
         // Your code here (to fix test012).
+        memcpy(new_ptr,ptr,sz);
     }
     m61_free(ptr, file, line);
     return new_ptr;
@@ -98,9 +104,14 @@ void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
 
 void* m61_calloc(size_t nmemb, size_t sz, const char* file, int line) {
     // Your code here (to fix test014).
-    void* ptr = m61_malloc(nmemb * sz, file, line);
-    if (ptr)
+    void* ptr = NULL;
+    if (nmemb * sz >= nmemb) {
+        ptr = m61_malloc(nmemb * sz, file, line);
         memset(ptr, 0, nmemb * sz);
+    } else {
+        stats_global.nfail++;
+        stats_global.fail_size += sz * nmemb;
+    }
     return ptr;
 }
 
