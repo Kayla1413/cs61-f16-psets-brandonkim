@@ -21,19 +21,30 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     stats_meta* meta_ptr;
     void* ret_ptr;
+    void* end_ptr;  // pointer to end of region, for heap_max
 
     meta_ptr = base_malloc(sz + sizeof(stats_meta)); // add space for metadata
+    end_ptr = ( (char*) meta_ptr) + sz + sizeof(stats_meta);
+
     if (meta_ptr == NULL) {
         stats_global.nfail++;
-        stats_global.fail_size += (int) sz;
+        stats_global.fail_size += (unsigned long long) sz;
         return meta_ptr;
     }
+    if (meta_ptr <= (stats_meta*) stats_global.heap_min) {
+        stats_global.heap_min = (char*) meta_ptr;
+    }
+
+    if (end_ptr >= (void*) stats_global.heap_max) {
+        stats_global.heap_max = (char*) end_ptr;
+    }
+
     meta_ptr->alloc_size = sz;
     // simply updating stats
     stats_global.nactive++;
+    stats_global.active_size += (unsigned long long) sz;
     stats_global.ntotal++;
-    stats_global.active_size += (int) sz;
-    stats_global.total_size += (int) sz;
+    stats_global.total_size += (unsigned long long) sz;
     ret_ptr = meta_ptr + 1;
     return ret_ptr;
 }
@@ -51,7 +62,7 @@ void m61_free(void *ptr, const char *file, int line) {
     stats_meta* meta_ptr = ((stats_meta*) ptr) - 1;
     if (ptr == NULL) return;
     size = meta_ptr->alloc_size;
-    stats_global.active_size -= size;
+    stats_global.active_size -= (unsigned long long) size;
     stats_global.nactive--;
     base_free(ptr);
 }
