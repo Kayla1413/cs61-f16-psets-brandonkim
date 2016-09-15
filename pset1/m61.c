@@ -22,10 +22,10 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     stats_meta* meta_ptr;
     void* ret_ptr;
     void* end_ptr;  // pointer to end of region, for heap_max
-    
+
     if (sizeof(stats_meta) + sz >= sz) {
         meta_ptr = base_malloc(sz + sizeof(stats_meta)); // add space for metadata
-    } else { 
+    } else {
         meta_ptr = NULL; //gets rid of always-true warning
     }
 
@@ -36,7 +36,7 @@ void* m61_malloc(size_t sz, const char* file, int line) {
         stats_global.fail_size += (unsigned long long) sz;
         return meta_ptr;
     }
-    if (meta_ptr <= (stats_meta*) stats_global.heap_min) {
+    if ((meta_ptr <= (stats_meta*) stats_global.heap_min) || stats_global.heap_min == 0) {
         stats_global.heap_min = (char*) meta_ptr;
     }
 
