@@ -66,6 +66,10 @@ void m61_free(void *ptr, const char *file, int line) {
     unsigned long long size;
     stats_meta* meta_ptr = ((stats_meta*) ptr) - 1;
     if (ptr == NULL) return;
+    if (ptr > (void*) stats_global.heap_max || ptr < (void*) stats_global.heap_min) {
+        printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
+        abort();
+    }
     size = meta_ptr->alloc_size;
     stats_global.active_size -= (unsigned long long) size;
     stats_global.nactive--;
