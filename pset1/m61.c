@@ -48,10 +48,10 @@ void* m61_malloc(size_t sz, const char* file, int line) {
 void m61_free(void *ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     unsigned long long size;
-    stats_meta* meta_ptr = ((stats_meta*) ptr) - sizeof(stats_meta);
+    stats_meta* meta_ptr = ((stats_meta*) ptr) - 1;
     if (ptr == NULL) return;
     size = meta_ptr->alloc_size;
-    stats_global.ntotal -= size;
+    stats_global.active_size -= size;
     stats_global.nactive--;
     base_free(ptr);
 }
