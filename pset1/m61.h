@@ -21,6 +21,7 @@ struct m61_statistics {
 
 struct m61_statistics_metadata {
     unsigned long long alloc_size;
+    unsigned int deadbeef;
 };
 
 void m61_getstatistics(struct m61_statistics* stats);

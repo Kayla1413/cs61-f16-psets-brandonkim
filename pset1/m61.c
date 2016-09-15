@@ -43,7 +43,7 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     if (end_ptr >= (void*) stats_global.heap_max) {
         stats_global.heap_max = (char*) end_ptr;
     }
-
+    meta_ptr->deadbeef = 0x0CAFEBABE;
     meta_ptr->alloc_size = sz;
     // simply updating stats
     stats_global.nactive++;
@@ -70,6 +70,11 @@ void m61_free(void *ptr, const char *file, int line) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
         abort();
     }
+    if (meta_ptr->deadbeef == 0x0DEADBEEF) {
+        printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
+        abort();
+    }
+    meta_ptr->deadbeef = 0x0DEADBEEF;
     size = meta_ptr->alloc_size;
     stats_global.active_size -= (unsigned long long) size;
     stats_global.nactive--;
