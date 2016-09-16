@@ -22,6 +22,12 @@ struct m61_statistics {
 struct m61_statistics_metadata {
     unsigned long long alloc_size;
     unsigned int deadbeef;
+    size_t size;
+    const char *file;
+    int line;
+    struct m61_statistics_metadata* cur;
+    struct m61_statistics_metadata* prv;
+    struct m61_statistics_metadata* nxt;
 };
 
 void m61_getstatistics(struct m61_statistics* stats);

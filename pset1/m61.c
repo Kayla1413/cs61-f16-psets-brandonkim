@@ -13,7 +13,9 @@ typedef struct m61_tail {
 } m61_tail;
 
 
-static stats_struct stats_global = {0, 0, 0, 0, 0, 0, 0xFFFFFFFF, 0 };
+static stats_struct stats_global = {0, 0, 0, 0, 0, 0, 0, 0 };
+
+stats_meta* global_meta;
 
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
@@ -50,9 +52,25 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     if (end_ptr >= (void*) stats_global.heap_max) {
         stats_global.heap_max = (char*) end_ptr;
     }
+
+    meta_ptr->cur = meta_ptr;
+    meta_ptr->prv = NULL;
+    meta_ptr->nxt = NULL;
     meta_ptr->deadbeef = 0x0CAFEBABE;
     meta_ptr->alloc_size = sz;
+    meta_ptr->file = file;
+    meta_ptr->line = line;
+    meta_ptr->size = sz;
     // simply updating stats
+
+    if (global_meta) {
+        global_meta->cur->nxt = meta_ptr;
+        meta_ptr->prv = global_meta->cur;
+        global_meta = meta_ptr;
+    } else {
+        global_meta = meta_ptr;
+    }
+
     stats_global.nactive++;
     stats_global.active_size += (unsigned long long) sz;
     stats_global.ntotal++;
@@ -72,6 +90,7 @@ void m61_free(void *ptr, const char *file, int line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     unsigned long long size;
     stats_meta* meta_ptr = ((stats_meta*) ptr) - 1;
+    stats_meta* actv_global = global_meta;
     if (ptr == NULL) return;
     if (ptr > (void*) stats_global.heap_max || ptr < (void*) stats_global.heap_min) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
@@ -90,7 +109,28 @@ void m61_free(void *ptr, const char *file, int line) {
         printf("MEMORY BUG %s:%d: detected wild write during free of pointer %p",file, line, ptr);
         abort();
     }
+    while ((actv_global != NULL) && (ptr != actv_global + 1)){
+        if (((void*) actv_global + 1 < ptr) && (ptr < (void*) actv_global + 1 + actv_global->size)) {
+            printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n  %s:%d: %p: %p is %d bytes inside a %zu byte region allocated here", 
+                   file, line , ptr, actv_global->file, actv_global->line, actv_global, ptr, (int) (ptr - (void*) actv_global),actv_global->size);
+            abort();
+        }
+        actv_global = actv_global->prv;
+    }
     meta_ptr->deadbeef = 0x0DEADBEEF;
+
+    if (meta_ptr->nxt)
+        meta_ptr->nxt->prv = meta_ptr->prv;
+
+    if (meta_ptr->prv) {
+        meta_ptr->prv->nxt = meta_ptr->nxt;
+        if (global_meta == meta_ptr)
+            global_meta = meta_ptr->prv;
+    }
+
+    if (!(meta_ptr->nxt) && !(meta_ptr->prv))
+        global_meta = NULL;
+
     size = meta_ptr->alloc_size;
     stats_global.active_size -= (unsigned long long) size;
     stats_global.nactive--;
@@ -183,5 +223,9 @@ void m61_printstatistics(void) {
 ///    memory.
 
 void m61_printleakreport(void) {
-    // Your code here.
+    stats_meta* actv_global = global_meta;
+    while(actv_global != NULL) {
+        printf("LEAK CHECK: %s:%d: allocated object %p with size %zu\n", actv_global->file, actv_global->line, actv_global + 1, actv_global->size);
+        actv_global = actv_global->prv;
+    };
 }
