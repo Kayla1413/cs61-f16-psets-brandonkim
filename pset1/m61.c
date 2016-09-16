@@ -96,26 +96,26 @@ void m61_free(void *ptr, const char *file, int line) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
         abort();
     }
+    while ((actv_global != NULL) && (ptr != actv_global->cur + 1)){
+        if (((void*) (actv_global->cur + 1) < ptr) && (ptr < (void*) (actv_global->cur + 1 + actv_global->size))) {
+            printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n  %s:%d: %p: %p is %d bytes inside a %zu byte region allocated here", 
+                   file, line , ptr, actv_global->file, actv_global->line, actv_global, ptr, (int) (ptr - ((void*) (actv_global->cur + 1))),actv_global->size);
+            abort();
+        }
+        actv_global = actv_global->prv;
+    }
     m61_tail* tail = (m61_tail*) ((char*) ptr + (meta_ptr->alloc_size));
     if (meta_ptr->deadbeef == 0x0DEADBEEF) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, double free ya dingus\n", file, line, ptr);
-        abort();
-    }
-    if (meta_ptr->deadbeef != 0x0CAFEBABE) {
-        printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n",file, line, ptr);
         abort();
     }
     if (tail->tl != 0xFEEDFEED) {
         printf("MEMORY BUG %s:%d: detected wild write during free of pointer %p",file, line, ptr);
         abort();
     }
-    while ((actv_global != NULL) && (ptr != actv_global + 1)){
-        if (((void*) actv_global + 1 < ptr) && (ptr < (void*) actv_global + 1 + actv_global->size)) {
-            printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n  %s:%d: %p: %p is %d bytes inside a %zu byte region allocated here", 
-                   file, line , ptr, actv_global->file, actv_global->line, actv_global, ptr, (int) (ptr - (void*) actv_global),actv_global->size);
-            abort();
-        }
-        actv_global = actv_global->prv;
+    if (meta_ptr->deadbeef != 0x0CAFEBABE) {
+        printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n",file, line, ptr);
+        abort();
     }
     meta_ptr->deadbeef = 0x0DEADBEEF;
 
@@ -224,7 +224,7 @@ void m61_printstatistics(void) {
 
 void m61_printleakreport(void) {
     stats_meta* actv_global = global_meta;
-    while(actv_global != NULL) {
+    while (actv_global != NULL) {
         printf("LEAK CHECK: %s:%d: allocated object %p with size %zu\n", actv_global->file, actv_global->line, actv_global + 1, actv_global->size);
         actv_global = actv_global->prv;
     };
