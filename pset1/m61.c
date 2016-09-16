@@ -70,7 +70,7 @@ void m61_free(void *ptr, const char *file, int line) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
         abort();
     }
-    if (meta_ptr->deadbeef == 0x0DEADBEEF) {
+    if ((meta_ptr->deadbeef == 0x0DEADBEEF) || (meta_ptr->deadbeef != 0x0CAFEBABE)) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
         abort();
     }
