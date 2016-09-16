@@ -8,8 +8,12 @@
 
 typedef struct m61_statistics stats_struct;
 typedef struct m61_statistics_metadata stats_meta;
+typedef struct m61_tail {
+  unsigned int tl;
+} m61_tail;
 
-static stats_struct stats_global = {0, 0, 0, 0, 0, 0, 0, 0 };
+
+static stats_struct stats_global = {0, 0, 0, 0, 0, 0, 0xFFFFFFFF, 0 };
 
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
@@ -24,18 +28,21 @@ void* m61_malloc(size_t sz, const char* file, int line) {
     void* end_ptr;  // pointer to end of region, for heap_max
 
     if (sizeof(stats_meta) + sz >= sz) {
-        meta_ptr = base_malloc(sz + sizeof(stats_meta)); // add space for metadata
+        meta_ptr = base_malloc(sz + sizeof(stats_meta) + sizeof(m61_tail)); // add space for metadata
     } else {
         meta_ptr = NULL; //gets rid of always-true warning
     }
-
-    end_ptr = ((char*) meta_ptr) + sz + sizeof(stats_meta);
 
     if (meta_ptr == NULL) {
         stats_global.nfail++;
         stats_global.fail_size += (unsigned long long) sz;
         return meta_ptr;
     }
+
+    end_ptr = ((char*) meta_ptr) + sz + sizeof(stats_meta);
+    m61_tail tail = {0xFEEDFEED};
+    memmove(((char*) meta_ptr) + sz + sizeof(stats_meta),&tail, sizeof(m61_tail));
+
     if ((meta_ptr <= (stats_meta*) stats_global.heap_min) || stats_global.heap_min == 0) {
         stats_global.heap_min = (char*) meta_ptr;
     }
@@ -70,12 +77,18 @@ void m61_free(void *ptr, const char *file, int line) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
         abort();
     }
+    m61_tail* tail = (m61_tail*) ((char*) ptr + (meta_ptr->alloc_size));
     if (meta_ptr->deadbeef == 0x0DEADBEEF) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, double free ya dingus\n", file, line, ptr);
         abort();
     }
     if (meta_ptr->deadbeef != 0x0CAFEBABE) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n",file, line, ptr);
+        abort();
+    }
+    if (tail->tl != 0xFEEDFEED) {
+        printf("MEMORY BUG %s:%d: detected wild write during free of pointer %p",file, line, ptr);
+        abort();
     }
     meta_ptr->deadbeef = 0x0DEADBEEF;
     size = meta_ptr->alloc_size;
@@ -93,10 +106,10 @@ void m61_free(void *ptr, const char *file, int line) {
 ///    location `file`:`line`.
 
 void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
-    (void) file, (void) line; 
+    (void) file, (void) line;
     void* new_ptr = NULL;
     stats_meta* meta_ptr = ((stats_meta*) ptr) - 1;
-    if (sz) 
+    if (sz)
         new_ptr = m61_malloc(sz, file, line);
     if (ptr && new_ptr) {
         // Copy the data from `ptr` into `new_ptr`.
@@ -108,7 +121,7 @@ void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
         } else {
             memcpy(new_ptr,ptr,sz);
         }
-        
+
     }
     //if (meta_ptr->alloc_size > sz) {
     //    printf("MEMORY BUG: %s:%d: invalid realloc of pointer %p, size too big\n", file, line, ptr);
