@@ -96,7 +96,7 @@ void m61_free(void *ptr, const char *file, int line) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not in heap\n", file, line, ptr);
         abort();
     }
-    while ((actv_global != NULL) && (ptr != actv_global->cur + 1)){
+    while ((actv_global != NULL) && (ptr != (void*) (actv_global->cur + 1))){
         if (((void*) (actv_global->cur + 1) < ptr) && (ptr < (void*) (actv_global->cur + 1 + actv_global->size))) {
             printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n  %s:%d: %p: %p is %d bytes inside a %zu byte region allocated here\n", 
                    file, line , ptr, actv_global->file, actv_global->line, actv_global, ptr, (int) (ptr - ((void*) (actv_global->cur + 1))),actv_global->size);
@@ -116,6 +116,10 @@ void m61_free(void *ptr, const char *file, int line) {
     if (meta_ptr->deadbeef != 0x0CAFEBABE) {
         printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n",file, line, ptr);
         abort();
+    }
+    if ((meta_ptr->prv != NULL) && (meta_ptr->prv != meta_ptr->prv->nxt) && (meta_ptr->nxt != NULL) && (meta_ptr->cur != meta_ptr->nxt->prv)) {
+    printf("MEMORY BUG: %s:%d: invalid free of pointer %p, double free ya dingus\n", file, line, ptr);
+    abort();
     }
     meta_ptr->deadbeef = 0x0DEADBEEF;
 
