@@ -98,9 +98,9 @@ void m61_free(void *ptr, const char *file, int line) {
     }
     while ((actv_global != NULL) && (ptr != actv_global->cur + 1)){
         if (((void*) (actv_global->cur + 1) < ptr) && (ptr < (void*) (actv_global->cur + 1 + actv_global->size))) {
-            printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n  %s:%d: %p: %p is %d bytes inside a %zu byte region allocated here", 
+            printf("MEMORY BUG: %s:%d: invalid free of pointer %p, not allocated\n  %s:%d: %p: %p is %d bytes inside a %zu byte region allocated here\n", 
                    file, line , ptr, actv_global->file, actv_global->line, actv_global, ptr, (int) (ptr - ((void*) (actv_global->cur + 1))),actv_global->size);
-            abort();
+            abort();ß
         }
         actv_global = actv_global->prv;
     }
