@@ -8,7 +8,9 @@ Don't include your partner.
 
 
 NOTES FOR THE GRADER (if any):
-
+Heavy-hitters not done, ran out of time. Probably going to try to redo this if
+possible.
 
 
 EXTRA CREDIT ATTEMPTED (if any):
+None.
