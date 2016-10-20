@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <errno.h>
 
+#define BUF_SIZE 4096
 // io61.c
 //    YOUR CODE HERE!
 
@@ -12,11 +13,11 @@
 //    Data structure for io61 file wrappers. Add your own stuff.
 
 struct io61_file {
-   int fd;
-   unsigned char cbuf[BUFSIZ];
-   off_t tag;
-   off_t end_tag;
-   off_t pos_tag;
+    int fd;
+    char buff[BUF_SIZE];
+    off_t tag;      // Offset in file of first byte in cache
+    off_t end_tag;  // Offset in file of first INVALID byte in cache
+    off_t pos_tag;  // Offset in file of next byte to read in cache.
 };
 
 
@@ -51,7 +52,7 @@ int io61_close(io61_file* f) {
 
 int io61_readc(io61_file* f) {
     unsigned char buf[1];
-    if (read(f->fd, buf, 1) == 1)
+    if (io61_read(f, buf, 1) == 1)
         return buf[0];
     else
         return EOF;
@@ -63,26 +64,30 @@ int io61_readc(io61_file* f) {
 //    characters read on success; normally this is `sz`. Returns a short
 //    count, which might be zero, if the file ended before `sz` characters
 //    could be read. Returns -1 if an error occurred before any characters
-//    were read.
+//    were read. Heavily "inspired" by Q20 of Exercises Storage 3X.
 
-// ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
-//     size_t nread = 0;
-//     while (nread != sz) {
-//         int ch = io61_readc(f);
-//         if (ch == EOF)
-//             break;
-//         buf[nread] = ch;
-//         ++nread;
-//     }
-//     if (nread != 0 || sz == 0 || io61_eof(f))
-//         return nread;
-//     else
-//         return -1;
-// }
-
-ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
-    ssize_t res = read(f->fd, buf, sz);
-    return res;
+ssize_t io61_read(io61_file* f, char* buf, size_t sz)
+{
+    ssize_t bytes_read = 0; // Update as we read data and is the ret value
+    while (bytes_read != sz) {
+        if (f->pos_tag < f->end_tag) { //Buffer still has valid data
+            ssize_t to_read = sz - bytes_read;
+            if (to_read > f->end_tag - f->pos_tag) //If buff doesn't have all
+                to_read = f->end_tag - f->pos_tag; //Only read til end of buf
+            memcpy(&buf[bytes_read], &f->buff[f->pos_tag - f->tag], to_read);
+            f->pos_tag += to_read;
+            bytes_read += to_read;
+        } else { // Buffer needs to be refilled
+            f->tag = f->end_tag;
+            ssize_t read_res = read(f->fd, f->buff, BUF_SIZE);
+            if (read_res > 0)
+                f->end_tag += read_res;
+            else // EOF or read() failed
+                // Return bytes read or result of read() if none has been read
+                return bytes_read ? bytes_read : read_res;
+        }
+    }
+    return bytes_read;
 }
 
 
