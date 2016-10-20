@@ -135,7 +135,7 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
            ssize_t n = sz - pos; 
            if (BUFSIZ - (f->pos_tag - f->tag) < n)
                n = BUFSIZ - (f->pos_tag - f->tag);
-           memcpy(&f->cbuf[f->pos_tag - f->tag], &buf[pos], n);
+           memcpy(&f->buff[f->pos_tag - f->tag], &buf[pos], n);
            f->pos_tag += n;
            if (f->pos_tag > f->end_tag)
                      f->end_tag = f->pos_tag;
@@ -156,7 +156,7 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 
 int io61_flush(io61_file* f) {
     if (f->end_tag != f->tag) {
-        ssize_t n = write(f->fd, f->cbuf, f->end_tag - f->tag);
+        ssize_t n = write(f->fd, f->buff, f->end_tag - f->tag);
         assert(n == f->end_tag - f->tag);
     }
     f->pos_tag = f->tag = f->end_tag;
