@@ -129,24 +129,24 @@ int io61_writec(io61_file* f, int ch) {
 //}
 
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
-   size_t pos = 0;
-   while (pos != sz) {
-       if (f->pos_tag - f->tag < BUFSIZ) {
-           ssize_t n = sz - pos; 
-           if (BUFSIZ - (f->pos_tag - f->tag) < n)
-               n = BUFSIZ - (f->pos_tag - f->tag);
-           memcpy(&f->buff[f->pos_tag - f->tag], &buf[pos], n);
+   size_t bytes_read = 0;
+   while (bytes_read != sz) {
+       if (f->pos_tag - f->tag < BUF_SIZ) {
+           ssize_t n = sz - bytes_read; 
+           if (BUF_SIZ - (f->pos_tag - f->tag) < n)
+               n = BUF_SIZ - (f->pos_tag - f->tag);
+           memcpy(&f->buff[f->pos_tag - f->tag], &buf[bytes_read], n);
            f->pos_tag += n;
            if (f->pos_tag > f->end_tag)
                      f->end_tag = f->pos_tag;
-           pos += n;
+           bytes_read += n;
        }
        assert(f->pos_tag <= f->end_tag);
-       if (f->pos_tag - f->tag == BUFSIZ)
+       if (f->pos_tag - f->tag == BUF_SIZ)
            io61_flush(f);
    }
 
-   return pos;
+   return bytes_read;
 }
 
 // io61_flush(f)
