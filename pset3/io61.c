@@ -131,10 +131,10 @@ int io61_writec(io61_file* f, int ch) {
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
    size_t bytes_read = 0;
    while (bytes_read != sz) {
-       if (f->pos_tag - f->tag < BUF_SIZ) {
-           ssize_t n = sz - bytes_read; 
-           if (BUF_SIZ - (f->pos_tag - f->tag) < n)
-               n = BUF_SIZ - (f->pos_tag - f->tag);
+       if (f->pos_tag - f->tag < BUF_SIZE) {
+           ssize_t n = sz - bytes_read;
+           if (BUF_SIZE - (f->pos_tag - f->tag) < n)
+               n = BUF_SIZE - (f->pos_tag - f->tag);
            memcpy(&f->buff[f->pos_tag - f->tag], &buf[bytes_read], n);
            f->pos_tag += n;
            if (f->pos_tag > f->end_tag)
@@ -142,7 +142,7 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
            bytes_read += n;
        }
        assert(f->pos_tag <= f->end_tag);
-       if (f->pos_tag - f->tag == BUF_SIZ)
+       if (f->pos_tag - f->tag == BUF_SIZE)
            io61_flush(f);
    }
 
@@ -168,12 +168,16 @@ int io61_flush(io61_file* f) {
 //    Change the file pointer for file `f` to `pos` bytes into the file.
 //    Returns 0 on success and -1 on failure.
 
-int io61_seek(io61_file* f, off_t pos) {
-    off_t r = lseek(f->fd, (off_t) pos, SEEK_SET);
-    if (r == (off_t) pos)
-        return 0;
-    else
-        return -1;
+int io61_seek(io61_file* f, off_t off) {
+    if (off < f->tag || off > f->end_tag) {
+        off_t aligned_off = off - (off % BUF_SIZE);
+        off_t r = lseek(f->fd, aligned_off, SEEK_SET);
+        if (r != aligned_off)
+            return -1;
+        f->tag = f->end_tag = aligned_off;
+    }
+    f->pos_tag = off;
+    return 0;
 }
 
 
