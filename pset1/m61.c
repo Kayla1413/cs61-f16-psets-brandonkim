@@ -153,24 +153,21 @@ void* m61_realloc(void* ptr, size_t sz, const char* file, int line) {
     (void) file, (void) line;
     void* new_ptr = NULL;
     stats_meta* meta_ptr = ((stats_meta*) ptr) - 1;
-    if (sz)
+    if (sz != 0) {
         new_ptr = m61_malloc(sz, file, line);
+    }
     if (ptr && new_ptr) {
         // Copy the data from `ptr` into `new_ptr`.
         // To do that, we must figure out the size of allocation `ptr`.
         // Your code here (to fix test012).
         size_t old_sz = meta_ptr->alloc_size;
         if (old_sz < sz) {
-            memcpy(new_ptr,ptr,meta_ptr->alloc_size);
+            memcpy(new_ptr,ptr,old_sz);
         } else {
             memcpy(new_ptr,ptr,sz);
         }
 
     }
-    //if (meta_ptr->alloc_size > sz) {
-    //    printf("MEMORY BUG: %s:%d: invalid realloc of pointer %p, size too big\n", file, line, ptr);
-    //    abort();
-    //}
     m61_free(ptr, file, line);
     return new_ptr;
 }

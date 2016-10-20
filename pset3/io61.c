@@ -12,7 +12,11 @@
 //    Data structure for io61 file wrappers. Add your own stuff.
 
 struct io61_file {
-    int fd;
+   int fd;
+   unsigned char cbuf[BUFSIZ];
+   off_t tag;
+   off_t end_tag;
+   off_t pos_tag;
 };
 
 
@@ -87,9 +91,9 @@ ssize_t io61_read(io61_file* f, char* buf, size_t sz) {
 //    -1 on error.
 
 int io61_writec(io61_file* f, int ch) {
-    unsigned char buf[1];
+    char buf[1];
     buf[0] = ch;
-    if (write(f->fd, buf, 1) == 1)
+    if (io61_write(f, buf, 1) == 1)
         return 0;
     else
         return -1;
@@ -114,11 +118,31 @@ int io61_writec(io61_file* f, int ch) {
 //         return -1;
 // }
 
-ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
-    ssize_t res = write(f->fd, buf, sz);
-    return res;
-}
+//ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
+//    ssize_t res = write(f->fd, buf, sz);
+//    return res;
+//}
 
+ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
+   size_t pos = 0;
+   while (pos != sz) {
+       if (f->pos_tag - f->tag < BUFSIZ) {
+           ssize_t n = sz - pos; 
+           if (BUFSIZ - (f->pos_tag - f->tag) < n)
+               n = BUFSIZ - (f->pos_tag - f->tag);
+           memcpy(&f->cbuf[f->pos_tag - f->tag], &buf[pos], n);
+           f->pos_tag += n;
+           if (f->pos_tag > f->end_tag)
+                     f->end_tag = f->pos_tag;
+           pos += n;
+       }
+       assert(f->pos_tag <= f->end_tag);
+       if (f->pos_tag - f->tag == BUFSIZ)
+           io61_flush(f);
+   }
+
+   return pos;
+}
 
 // io61_flush(f)
 //    Forces a write of all buffered data written to `f`.
@@ -126,7 +150,11 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
 //    data buffered for reading, or do nothing.
 
 int io61_flush(io61_file* f) {
-    (void) f;
+    if (f->end_tag != f->tag) {
+        ssize_t n = write(f->fd, f->cbuf, f->end_tag - f->tag);
+        assert(n == f->end_tag - f->tag);
+    }
+    f->pos_tag = f->tag = f->end_tag;
     return 0;
 }
 
