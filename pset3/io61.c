@@ -129,12 +129,12 @@ int io61_writec(io61_file* f, int ch) {
 //}
 
 ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
-   size_t bytes_read = 0;
-   while (bytes_read != sz) {
+   size_t bytes_read = 0; // Update as we read data and is the ret value
+   while (bytes_read != sz) { // if we haven't already read sz amount of data
        if (f->pos_tag - f->tag < BUF_SIZE) {
-           ssize_t n = sz - bytes_read;
-           if (BUF_SIZE - (f->pos_tag - f->tag) < n)
-               n = BUF_SIZE - (f->pos_tag - f->tag);
+           ssize_t n = sz - bytes_read; //set n as the number of bytes left to read
+           if (BUF_SIZE - (f->pos_tag - f->tag) < n) //if n is greater than size of buffer left to write
+               n = BUF_SIZE - (f->pos_tag - f->tag); //set n as the size of buffer left to write
            memcpy(&f->buff[f->pos_tag - f->tag], &buf[bytes_read], n);
            f->pos_tag += n;
            if (f->pos_tag > f->end_tag)
@@ -142,8 +142,8 @@ ssize_t io61_write(io61_file* f, const char* buf, size_t sz) {
            bytes_read += n;
        }
        assert(f->pos_tag <= f->end_tag);
-       if (f->pos_tag - f->tag == BUF_SIZE)
-           io61_flush(f);
+       if (f->pos_tag - f->tag == BUF_SIZE) //if we wrote everything in the buffer
+           io61_flush(f); //flush f
    }
 
    return bytes_read;
@@ -169,6 +169,9 @@ int io61_flush(io61_file* f) {
 //    Returns 0 on success and -1 on failure.
 
 int io61_seek(io61_file* f, off_t off) {
+    // if the offset is not contained in the parameters,
+    // change the offset by the amount it is off by
+    // if this change fails, return -1
     if (off < f->tag || off > f->end_tag) {
         off_t aligned_off = off - (off % BUF_SIZE);
         off_t r = lseek(f->fd, aligned_off, SEEK_SET);
@@ -176,6 +179,7 @@ int io61_seek(io61_file* f, off_t off) {
             return -1;
         f->tag = f->end_tag = aligned_off;
     }
+    // set the position as the offset
     f->pos_tag = off;
     return 0;
 }
