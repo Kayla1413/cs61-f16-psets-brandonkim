@@ -31,6 +31,8 @@ static unsigned ticks;          // # timer interrupts so far
 void schedule(void);
 void run(proc* p) __attribute__((noreturn));
 
+int8_t global_owner; // global for use in allocator function
+
 
 // PAGEINFO
 //
@@ -112,6 +114,37 @@ void kernel(const char* command) {
 }
 
 
+x86_64_pagetable* alloc()
+{
+  for (int i = 0; i < NPAGES; i++) {
+    if (pageinfo[i].refcount == 0) {
+      pageinfo[i].refcount++;
+      pageinfo[i].owner = global_owner;
+      return (x86_64_pagetable*) PAGEADDRESS(i);
+    }
+  }
+  return NULL;
+}
+
+// copy_pagetable(old, owner)
+x86_64_pagetable* copy_pagetable(x86_64_pagetable* old, pid_t owner)
+{
+  log_printf("Copy pagetable\n");
+  global_owner = owner;
+  x86_64_pagetable* newL1 = alloc();
+  assert(pageinfo[PAGENUMBER(newL1)].owner == owner);
+
+  for (uintptr_t VA = 0; VA < MEMSIZE_VIRTUAL; VA += PAGESIZE) {
+
+    vamapping info = virtual_memory_lookup(old, VA);
+    log_printf("VA: %x\n PA: %x\n", VA,info.pa );
+    virtual_memory_map(newL1, VA, info.pa, PAGESIZE, info.perm, alloc);
+  }
+  return newL1;
+}
+
+
+
 // process_setup(pid, program_number)
 //    Load application program `program_number` as process number `pid`.
 //    This loads the application's code and data into memory, sets its
@@ -119,8 +152,9 @@ void kernel(const char* command) {
 
 void process_setup(pid_t pid, int program_number) {
     process_init(&processes[pid], 0);
-    processes[pid].p_pagetable = kernel_pagetable;
-    ++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
+    processes[pid].p_pagetable = copy_pagetable(kernel_pagetable, pid);
+    //copy_pagetable(kernel_pagetable, pid);
+    //++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
     int r = program_load(&processes[pid], program_number, NULL);
     assert(r >= 0);
     processes[pid].p_registers.reg_rsp = PROC_START_ADDR + PROC_SIZE * pid;
