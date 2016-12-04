@@ -7,7 +7,6 @@ typedef struct buildstring {
     int capacity;
 } buildstring;
 
-
 // buildstring_append(bstr, ch)
 //    Add `ch` to the end of the dynamically-allocated string `bstr->s`.
 

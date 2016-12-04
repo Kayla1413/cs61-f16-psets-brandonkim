@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-
+#include <sys/param.h>
 
 // struct command
 //    Data structure describing a command. Add your own stuff.
@@ -13,9 +13,15 @@ struct command {
     int argc;      // number of arguments
     char** argv;   // arguments, terminated by NULL
     pid_t pid;     // process ID running this command, -1 if none
+    int background;
 };
 
+// Current working directory global
+char cwd[MAXPATHLEN];
 
+// Built-in commands
+char BUILTIN_CD[] = "cd";
+char BUILTIN_EXIT[] = "exit";
 // command_alloc()
 //    Allocate and return a new command structure.
 
@@ -69,9 +75,39 @@ static void command_append_arg(command* c, char* word) {
 
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
-    // Your code here!
-    fprintf(stderr, "start_command not done yet\n");
-    return c->pid;
+    pid_t child_pid;
+    // Handle built-ins before possibly forking
+    if (strcmp(c->argv[0], BUILTIN_CD) == 0) {
+        if (chdir(c->argv[1]) == -1) {
+            perror("failed to change cwd: ");
+            return -1;
+        } else return 0;
+    }
+     if (strcmp(c->argv[0], BUILTIN_EXIT) == 0)
+       _exit(EXIT_SUCCESS); 
+    child_pid = fork();
+
+    if (child_pid == 0) {
+        // In child
+        // printf("Filius sum.\n");
+        c->pid = child_pid;
+        execvp(c->argv[0], c->argv);
+        // If this executes, something's gone wrong
+        perror("Execvp failed: ");
+        _exit(EXIT_FAILURE);
+        return -1;
+    } else if (child_pid > 0) {
+        // In parent
+        int ret;
+        // printf("Pater sum.\n");
+        waitpid(child_pid, &ret, 0);
+        // Child has now terminated
+        // printf("RIP, filius meus.\n");
+        return c->pid;
+    } else {
+        fprintf(stderr, "Failed to fork, oh dear.\n");
+        return -1;
+    }
 }
 
 
@@ -96,7 +132,6 @@ pid_t start_command(command* c, pid_t pgid) {
 
 void run_list(command* c) {
     start_command(c, 0);
-    fprintf(stderr, "run_command not done yet\n");
 }
 
 
@@ -110,9 +145,13 @@ void eval_line(const char* s) {
 
     // build the command
     command* c = command_alloc();
-    while ((s = parse_shell_token(s, &type, &token)) != NULL)
-        command_append_arg(c, token);
+    while ((s = parse_shell_token(s, &type, &token)) != NULL) {
+        if (type == TOKEN_NORMAL)
+            command_append_arg(c, token);
+    }
 
+    // Debug info
+    printf("Argc: %d\n", c->argc);
     // execute it
     if (c->argc)
         run_list(c);
@@ -150,9 +189,12 @@ int main(int argc, char* argv[]) {
     int needprompt = 1;
 
     while (!feof(command_file)) {
+        // Update cwd
+        getcwd(cwd, MAXPATHLEN);
+
         // Print the prompt at the beginning of the line
         if (needprompt && !quiet) {
-            printf("sh61[%d]$ ", getpid());
+            printf("sh61[%d]:%s:$ ", getpid(), cwd);
             fflush(stdout);
             needprompt = 0;
         }
