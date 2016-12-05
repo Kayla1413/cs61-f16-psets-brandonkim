@@ -100,7 +100,8 @@ pid_t start_command(command* c, pid_t pgid) {
         // In parent
         int ret;
         // printf("Pater sum.\n");
-        waitpid(child_pid, &ret, 0);
+        if (! (c->background))
+            waitpid(child_pid, &ret, 0);
         // Child has now terminated
         // printf("RIP, filius meus.\n");
         return c->pid;
@@ -148,10 +149,12 @@ void eval_line(const char* s) {
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
         if (type == TOKEN_NORMAL)
             command_append_arg(c, token);
+        if (type == TOKEN_BACKGROUND)
+            c->background = 1;
     }
 
     // Debug info
-    printf("Argc: %d\n", c->argc);
+//    printf("Argc: %d\n", c->argc);
     // execute it
     if (c->argc)
         run_list(c);
