@@ -14,6 +14,7 @@ struct command {
     char** argv;   // arguments, terminated by NULL
     pid_t pid;     // process ID running this command, -1 if none
     int background;
+    command* next;    // Next command in list
 };
 
 // Current working directory global
@@ -97,13 +98,7 @@ pid_t start_command(command* c, pid_t pgid) {
         _exit(EXIT_FAILURE);
         return -1;
     } else if (child_pid > 0) {
-        // In parent
-        int ret;
-        // printf("Pater sum.\n");
-        if (! (c->background))
-            waitpid(child_pid, &ret, 0);
-        // Child has now terminated
-        // printf("RIP, filius meus.\n");
+	// In parent (shell)
         return c->pid;
     } else {
         fprintf(stderr, "Failed to fork, oh dear.\n");
@@ -132,7 +127,9 @@ pid_t start_command(command* c, pid_t pgid) {
 //       - Cancel the list when you detect interruption.
 
 void run_list(command* c) {
-    start_command(c, 0);
+    pid_t child = start_command(c, 0);
+    int status;
+    waitpid(child, &status, 0);
 }
 
 
