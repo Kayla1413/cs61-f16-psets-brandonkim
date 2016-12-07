@@ -15,6 +15,8 @@ struct command {
     pid_t pid;     // process ID running this command, -1 if none
     int background;
     command* next;    // Next command in list
+    int conditional;
+    int exit_status;
 };
 
 // Current working directory global
@@ -33,6 +35,8 @@ static command* command_alloc(void) {
     c->pid = -1;
     c->background = 0;
     c->next = NULL;
+    c->conditional = 0;
+    c->exit_status = 42;
     return c;
 }
 
@@ -87,7 +91,7 @@ pid_t start_command(command* c, pid_t pgid) {
         } else return 0;
     }
      if (strcmp(c->argv[0], BUILTIN_EXIT) == 0)
-       _exit(EXIT_SUCCESS); 
+       _exit(EXIT_SUCCESS);
     child_pid = fork();
 
     if (child_pid == 0) {
@@ -139,8 +143,24 @@ void run_list(command* c) {
 	    waitpid(child, &status, 0);
         if (next->next == NULL) // This was the last command in the list
 	    break;
-        //Otherwise we still have more to go
-        next = next->next;
+
+        //Otherwise we still have more to go, check conditionals
+        if ((next->conditional == TOKEN_AND) && WIFEXITED(status) && (WEXITSTATUS(status)) == 0) {
+            next = next->next;
+            continue;
+        } if (next->conditional == TOKEN_AND)
+            break;
+        if ((next->conditional == TOKEN_OR) && WIFEXITED(status) && (WEXITSTATUS(status) != 0)) {
+            next = next->next;
+            continue;
+        } if (next->conditional == TOKEN_OR)
+            break;
+	if (next->conditional == 0) {
+	    next = next->next;
+	    continue;
+	}
+	// We should have continued by now...
+	printf("Well, funny seeing you here... \n");
     }
 }
 
@@ -152,6 +172,7 @@ void eval_line(const char* s) {
     int type;
     char* token;
     command* next_command;
+    int i;
     // Your code here!
 
     // build the command
@@ -162,8 +183,11 @@ void eval_line(const char* s) {
             command_append_arg(current, token);
         if (type == TOKEN_BACKGROUND)
             current->background = 1;
-        if (type == TOKEN_SEQUENCE || type == TOKEN_BACKGROUND) {
-           next_command = command_alloc(); 
+        if (type == TOKEN_AND || type == TOKEN_OR)
+            current->conditional = type;
+        if (type == TOKEN_SEQUENCE || type == TOKEN_BACKGROUND || type == TOKEN_AND || type == TOKEN_OR) {
+           next_command = command_alloc();
+           ++i;
            current->next = next_command;
            current = next_command;
         }
@@ -173,6 +197,22 @@ void eval_line(const char* s) {
     if (c1->argc)
         run_list(c1);
     command_free(c1);
+
+    // free the list of commands, don't want leaky memory now do we?
+   command** arr = malloc(i * sizeof(command*));
+   int n = 0;
+   current = c1;
+   while (n != i) {
+       arr[n] = current;
+       current = current->next;
+       n++;
+   }
+
+   while (n >= 1) {
+       command_free(arr[n-1]);
+       n--;
+   }
+   free(arr);
 }
 
 
