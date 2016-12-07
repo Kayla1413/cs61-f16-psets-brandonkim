@@ -13,10 +13,10 @@ struct command {
     int argc;      // number of arguments
     char** argv;   // arguments, terminated by NULL
     pid_t pid;     // process ID running this command, -1 if none
-    int background;
+    int background; // whether to run command in background
     command* next;    // Next command in list
-    int conditional;
-    int exit_status;
+    int conditional; // holds TOKEN_AND or TOKEN_OR for conditionals
+    int exit_status; // holds exit status for use in conditionals
 };
 
 // Current working directory global
@@ -25,6 +25,7 @@ char cwd[MAXPATHLEN];
 // Built-in commands
 char BUILTIN_CD[] = "cd";
 char BUILTIN_EXIT[] = "exit";
+
 // command_alloc()
 //    Allocate and return a new command structure.
 
@@ -83,6 +84,7 @@ static void command_append_arg(command* c, char* word) {
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
     pid_t child_pid;
+
     // Handle built-ins before possibly forking
     if (strcmp(c->argv[0], BUILTIN_CD) == 0) {
         if (chdir(c->argv[1]) == -1) {
@@ -92,11 +94,10 @@ pid_t start_command(command* c, pid_t pgid) {
     }
      if (strcmp(c->argv[0], BUILTIN_EXIT) == 0)
        _exit(EXIT_SUCCESS);
-    child_pid = fork();
 
+    child_pid = fork();
     if (child_pid == 0) {
         // In child
-        // printf("Filius sum.\n");
         c->pid = child_pid;
         execvp(c->argv[0], c->argv);
         // If this executes, something's gone wrong
@@ -107,7 +108,7 @@ pid_t start_command(command* c, pid_t pgid) {
 	// In parent (shell)
         return c->pid;
     } else {
-        fprintf(stderr, "Failed to fork, oh dear.\n");
+        perror("Failed to fork, oh dear: ");
         return -1;
     }
 }
@@ -133,34 +134,34 @@ pid_t start_command(command* c, pid_t pgid) {
 //       - Cancel the list when you detect interruption.
 
 void run_list(command* c) {
-    command* next;
+    command* current;
     int status; // For waitpid()
     pid_t child;
-    next = c;
-    while (next->argc != 0) {
-        child = start_command(next, 42);
-        if (next->background == 0)
+    current = c;
+    while (current->argc != 0) {
+        child = start_command(current, 42);
+        if (current->background == 0)
 	    waitpid(child, &status, 0);
-        if (next->next == NULL) // This was the last command in the list
+        if (current->next == NULL) // This was the last command in the list
 	    break;
 
         //Otherwise we still have more to go, check conditionals
-        if ((next->conditional == TOKEN_AND) && WIFEXITED(status) && (WEXITSTATUS(status)) == 0) {
-            next = next->next;
+        if ((current->conditional == TOKEN_AND) && WIFEXITED(status) && (WEXITSTATUS(status)) == 0) {
+            current = current->next;
             continue;
-        } if (next->conditional == TOKEN_AND)
+        } if (current->conditional == TOKEN_AND)
             break;
-        if ((next->conditional == TOKEN_OR) && WIFEXITED(status) && (WEXITSTATUS(status) != 0)) {
-            next = next->next;
+        if ((current->conditional == TOKEN_OR) && WIFEXITED(status) && (WEXITSTATUS(status) != 0)) {
+            current = current->next;
             continue;
-        } if (next->conditional == TOKEN_OR)
+        } if (current->conditional == TOKEN_OR)
             break;
-	if (next->conditional == 0) {
-	    next = next->next;
+	if (current->conditional == 0) {
+	    current = current->next;
 	    continue;
 	}
 	// We should have continued by now...
-	printf("Well, funny seeing you here... \n");
+	printf("Uncaught conditions Considered Harmful... \n");
     }
 }
 
@@ -172,12 +173,12 @@ void eval_line(const char* s) {
     int type;
     char* token;
     command* next_command;
-    int i;
-    // Your code here!
+    int allocs = 0; // Track allocations of command structs to free later
 
-    // build the command
+    // Build the command
     command* c1 = command_alloc();
     command* current = c1;
+    allocs = 1;
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
         if (type == TOKEN_NORMAL)
             command_append_arg(current, token);
@@ -187,7 +188,7 @@ void eval_line(const char* s) {
             current->conditional = type;
         if (type == TOKEN_SEQUENCE || type == TOKEN_BACKGROUND || type == TOKEN_AND || type == TOKEN_OR) {
            next_command = command_alloc();
-           ++i;
+           allocs++;
            current->next = next_command;
            current = next_command;
         }
@@ -196,18 +197,16 @@ void eval_line(const char* s) {
     // execute it
     if (c1->argc)
         run_list(c1);
-    command_free(c1);
 
-    // free the list of commands, don't want leaky memory now do we?
-   command** arr = malloc(i * sizeof(command*));
+   // free the list of commands, don't want leaky memory now do we?
+   command** arr = malloc(allocs * sizeof(command*));
    int n = 0;
    current = c1;
-   while (n != i) {
+   while (n != allocs) {
        arr[n] = current;
        current = current->next;
        n++;
    }
-
    while (n >= 1) {
        command_free(arr[n-1]);
        n--;
