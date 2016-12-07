@@ -151,20 +151,21 @@ void run_list(command* c) {
 void eval_line(const char* s) {
     int type;
     char* token;
+    command* next_command;
     // Your code here!
 
     // build the command
     command* c1 = command_alloc();
-    command* next_command = command_alloc(); 
     command* current = c1;
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
         if (type == TOKEN_NORMAL)
             command_append_arg(current, token);
         if (type == TOKEN_BACKGROUND)
             current->background = 1;
-        if (type == TOKEN_SEQUENCE) {
+        if (type == TOKEN_SEQUENCE || type == TOKEN_BACKGROUND) {
+           next_command = command_alloc(); 
+           current->next = next_command;
            current = next_command;
-           c1->next = next_command; 
         }
         waitpid(-1,0,WNOHANG);
     }
@@ -172,7 +173,6 @@ void eval_line(const char* s) {
     if (c1->argc)
         run_list(c1);
     command_free(c1);
-    command_free(next_command);
 }
 
 
