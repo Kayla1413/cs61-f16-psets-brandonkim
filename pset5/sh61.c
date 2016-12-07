@@ -166,6 +166,7 @@ void eval_line(const char* s) {
            current = next_command;
            c1->next = next_command; 
         }
+        waitpid(-1,0,WNOHANG);
     }
     // execute it
     if (c1->argc)
@@ -238,6 +239,7 @@ int main(int argc, char* argv[]) {
 
         // Handle zombie processes and/or interrupt requests
         // Your code here!
+        waitpid(-1,0,WNOHANG);
     }
 
     return 0;
