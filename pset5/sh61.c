@@ -31,6 +31,8 @@ static command* command_alloc(void) {
     c->argc = 0;
     c->argv = NULL;
     c->pid = -1;
+    c->background = 0;
+    c->next = NULL;
     return c;
 }
 
@@ -127,9 +129,19 @@ pid_t start_command(command* c, pid_t pgid) {
 //       - Cancel the list when you detect interruption.
 
 void run_list(command* c) {
-    pid_t child = start_command(c, 0);
-    int status;
-    waitpid(child, &status, 0);
+    command* next;
+    int status; // For waitpid()
+    pid_t child;
+    next = c;
+    while (next->argc != 0) {
+        child = start_command(next, 42);
+        if (next->background == 0)
+	    waitpid(child, &status, 0);
+        if (next->next == NULL) // This was the last command in the list
+	    break;
+        //Otherwise we still have more to go
+        next = next->next;
+    }
 }
 
 
@@ -142,20 +154,24 @@ void eval_line(const char* s) {
     // Your code here!
 
     // build the command
-    command* c = command_alloc();
+    command* c1 = command_alloc();
+    command* next_command = command_alloc(); 
+    command* current = c1;
     while ((s = parse_shell_token(s, &type, &token)) != NULL) {
         if (type == TOKEN_NORMAL)
-            command_append_arg(c, token);
+            command_append_arg(current, token);
         if (type == TOKEN_BACKGROUND)
-            c->background = 1;
+            current->background = 1;
+        if (type == TOKEN_SEQUENCE) {
+           current = next_command;
+           c1->next = next_command; 
+        }
     }
-
-    // Debug info
-//    printf("Argc: %d\n", c->argc);
     // execute it
-    if (c->argc)
-        run_list(c);
-    command_free(c);
+    if (c1->argc)
+        run_list(c1);
+    command_free(c1);
+    command_free(next_command);
 }
 
 
