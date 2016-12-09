@@ -41,7 +41,7 @@ static command* command_alloc(void) {
     command* c = (command*) malloc(sizeof(command));
     c->argc = 0;
     c->argv = NULL;
-    c->pid = -1;
+    c->pid = -1240236; // -1 as a default value Considered Harmful
     c->background = 0;
     c->next = NULL;
     c->conditional = 0;
@@ -147,24 +147,29 @@ pid_t start_command(command* c, pid_t pgid) {
     child_pid = fork();
     if (child_pid == 0) {
         // In child
-        c->pid = child_pid;
+        c->pid = getpid();
         // Handle pipes, redirections;
         dup2(c->stdin_fd, STDIN_FILENO);
         dup2(c->stdout_fd, STDOUT_FILENO);
         dup2(c->stderr_fd, STDERR_FILENO);
-        execvp(c->argv[0], c->argv);
-
-        // If connected to a pipe, close the other FD
         if (c->pipe_type == PIPE_IN)
             close(c->pipe_fds[0]);
         if (c->pipe_type == PIPE_OUT)
             close(c->pipe_fds[1]);
+        execvp(c->argv[0], c->argv);
+
         // If this executes, something's gone wrong
         perror("Execvp failed: ");
         _exit(EXIT_FAILURE);
         return -1;
     } else if (child_pid > 0) {
 	// In parent (shell)
+        c->pid = child_pid;
+
+        if (c->pipe_type == PIPE_IN)
+            close(c->pipe_fds[1]);
+        if (c->pipe_type == PIPE_OUT)
+            close(c->pipe_fds[0]);
         return c->pid;
     } else {
         perror("Failed to fork, oh dear: ");
@@ -199,8 +204,12 @@ void run_list(command* c) {
     current = c;
     while (current->argc != 0) {
         child = start_command(current, 42); // Change the PGID later
-        if (current->background == 0)
-	    waitpid(child, &status, 0);
+        if (current->background == 0) {
+	    if(waitpid(child, &status, 0) != child) {
+                perror("failed to wait on child: ");
+            }
+        }
+
         if (current->next == NULL) // This was the last command in the list
 	    break;
 
@@ -276,9 +285,38 @@ void eval_line(const char* s) {
             current->next->stdin_fd = fds[0]; // 2nd cmd's stdin will be read end of pipe
             current = next_command;
         }
-
-
-        waitpid(-1,0,WNOHANG);
+        if (type == TOKEN_REDIRECTION) {
+            int redir_fd;
+            char* redir_op = malloc(strlen(token) + 1); // +1 to account for \0 ending
+            strcpy(redir_op, token);
+            s = parse_shell_token(s, &type, &token);
+            const char* path = s;
+            if (strcmp(redir_op, "<") == 0) {
+                if ( (redir_fd = open(path, O_RDONLY)) == -1)
+                    perror("Failed to open redirection file: ");
+                current->stdin_fd = redir_fd;
+            }
+            else if (strcmp(redir_op, ">") == 0) {
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, S_IWUSR)) == -1)
+                    perror("Failed to open redirection file: ");
+                current->stdout_fd = redir_fd;
+            }
+            else if (strcmp(redir_op, ">>") == 0) {
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IWUSR)) == -1)
+                    perror("Failed to open redirection file: ");
+                current->stdout_fd = redir_fd;
+            }
+            else if (strcmp(redir_op, "2>") == 0) {
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, S_IWUSR)) == -1)
+                    perror("Failed to open redirection file: ");
+                current->stderr_fd = redir_fd;
+            }
+             else if (strcmp(redir_op, "2>>") == 0) {
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IWUSR)) == -1)
+                    perror("Failed to open redirection file: ");
+                current->stderr_fd = redir_fd;
+            }           
+        }
     }
     // execute it
     if (c1->argc)
@@ -298,6 +336,7 @@ void eval_line(const char* s) {
        n--;
    }
    free(arr);
+   free(token);
 }
 
 
