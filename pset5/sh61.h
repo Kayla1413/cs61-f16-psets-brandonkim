@@ -23,6 +23,11 @@
 #define TOKEN_RPAREN        8   // `)` operator
 #define TOKEN_OTHER         -1
 
+// Define some constants for pipe presence
+#define PIPE_IN		    123 
+#define PIPE_OUT	    456
+#define PIPE_NONE	    0
+
 // parse_shell_token(str, type, token)
 //    Parse the next token from the shell command `str`. Stores the type of
 //    the token in `*type`; this is one of the TOKEN_ constants. Stores the

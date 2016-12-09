@@ -17,14 +17,22 @@ struct command {
     command* next;    // Next command in list
     int conditional; // holds TOKEN_AND or TOKEN_OR for conditionals
     int exit_status; // holds exit status for use in conditionals
+    int pipe_type; // Holds PIPE_IN/OUT/NONE, for use in pipes
+    int pipe_fds[2]; // Holds pipe FDs, needed to close unneeded ends.
+    int stdin_fd; // Holds fd for stdin. Will redirect stdin if positive.
+    int stdout_fd; // Ditto stdout
+    int stderr_fd; // Ditto stderr
 };
 
 // Current working directory global
 char cwd[MAXPATHLEN];
 
 // Built-in commands
-char BUILTIN_CD[] = "cd";
-char BUILTIN_EXIT[] = "exit";
+const char BUILTIN_CD[] = "cd";
+const char BUILTIN_EXIT[] = "exit";
+
+// debug global
+int debug;
 
 // command_alloc()
 //    Allocate and return a new command structure.
@@ -38,9 +46,48 @@ static command* command_alloc(void) {
     c->next = NULL;
     c->conditional = 0;
     c->exit_status = 42;
+    c->pipe_type = PIPE_NONE;
+    c->pipe_fds[0] = -1;
+    c->pipe_fds[1] = -1;
+    c->stdin_fd = STDIN_FILENO;
+    c->stdout_fd = STDOUT_FILENO;
+    c->stderr_fd = STDERR_FILENO;
     return c;
 }
 
+static void debug_print_command(command* c)
+{
+    printf("------------------DEBUG----------------------\n");
+    printf("Command: ");
+    for (int i=0; i < c->argc; ++i) {
+        printf("%s ", c->argv[i]);
+    }
+    printf("\nargc: %d \n", c->argc);
+    printf("PID: %d\n", c->pid);
+    printf("Background: %d\n", c->background);
+    if (c->next == NULL)
+        printf("Next: NULL\n");
+    else if (c->next->argc == 0)
+        printf("Next: NULL\n");       
+    else
+        printf("Next: %p\n", c->next->argv[0]);
+    if (c->conditional == TOKEN_AND)
+        printf("Conditional: and\n");
+    else if (c->conditional == TOKEN_OR)
+        printf("Conditional: or\n");
+    else
+        printf("Conditional: none\n");
+    printf("Exit Status: %d\n", c->exit_status);
+    if (c->pipe_type == PIPE_IN)
+        printf("Pipe: stdout\n");
+    else if (c->pipe_type == PIPE_OUT)
+        printf("Pipe: stdin\n");
+    else
+        printf("Pipe: none\n");
+    printf("Pipe FDs: %d, %d\n", c->pipe_fds[0], c->pipe_fds[1]);
+    printf("stdin: %d\nstdout: %d\nstderr: %d\n", c->stdin_fd, c->stdout_fd, c->stderr_fd);
+    printf("-----------------DEBUG---------------------\n");
+}
 
 // command_free(c)
 //    Free command structure `c`, including all its words.
@@ -84,7 +131,9 @@ static void command_append_arg(command* c, char* word) {
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
     pid_t child_pid;
-
+    // Print debugging info if requested
+    if (debug == 1)
+        debug_print_command(c);
     // Handle built-ins before possibly forking
     if (strcmp(c->argv[0], BUILTIN_CD) == 0) {
         if (chdir(c->argv[1]) == -1) {
@@ -99,7 +148,17 @@ pid_t start_command(command* c, pid_t pgid) {
     if (child_pid == 0) {
         // In child
         c->pid = child_pid;
+        // Handle pipes, redirections;
+        dup2(c->stdin_fd, STDIN_FILENO);
+        dup2(c->stdout_fd, STDOUT_FILENO);
+        dup2(c->stderr_fd, STDERR_FILENO);
         execvp(c->argv[0], c->argv);
+
+        // If connected to a pipe, close the other FD
+        if (c->pipe_type == PIPE_IN)
+            close(c->pipe_fds[0]);
+        if (c->pipe_type == PIPE_OUT)
+            close(c->pipe_fds[1]);
         // If this executes, something's gone wrong
         perror("Execvp failed: ");
         _exit(EXIT_FAILURE);
@@ -139,7 +198,7 @@ void run_list(command* c) {
     pid_t child;
     current = c;
     while (current->argc != 0) {
-        child = start_command(current, 42);
+        child = start_command(current, 42); // Change the PGID later
         if (current->background == 0)
 	    waitpid(child, &status, 0);
         if (current->next == NULL) // This was the last command in the list
@@ -192,6 +251,33 @@ void eval_line(const char* s) {
            current->next = next_command;
            current = next_command;
         }
+        if (type == TOKEN_PIPE) {
+            next_command = command_alloc();
+            allocs++;
+            current->next = next_command;
+            current->pipe_type = PIPE_IN;
+            current->next->pipe_type = PIPE_OUT;
+            current->background = 1;
+            int fds[2];
+            if (pipe(fds) == -1) {
+                perror("Failed to create pipe: ");
+                break;
+            }
+             if (memcpy(current->pipe_fds, fds, 2 * sizeof(int)) != current->pipe_fds) {
+                 perror("Failed to copy pipe FDs to command struct: ");
+                 break;
+             }
+            
+           if (memcpy(next_command->pipe_fds, fds, 2 * sizeof(int)) != next_command->pipe_fds) {
+                 perror("Failed to copy pipe FDs to command struct: ");
+                 break;
+             }
+            current->stdout_fd = fds[1]; // 1st cmd's stdout will be write end of pipe
+            current->next->stdin_fd = fds[0]; // 2nd cmd's stdin will be read end of pipe
+            current = next_command;
+        }
+
+
         waitpid(-1,0,WNOHANG);
     }
     // execute it
@@ -225,14 +311,16 @@ int main(int argc, char* argv[]) {
         --argc, ++argv;
     }
 
-    // Check for filename option: read commands from file
-    if (argc > 1) {
+    // Check for filename option (and hackily not debug flag): read commands from file
+    if (argc > 1 && strcmp(argv[1], "-d")) {
         command_file = fopen(argv[1], "rb");
         if (!command_file) {
             perror(argv[1]);
             exit(1);
         }
     }
+    if (argc > 1 && strcmp(argv[1], "-d") == 0)
+        debug = 1;
 
     // - Put the shell into the foreground
     // - Ignore the SIGTTOU signal, which is sent when the shell is put back
@@ -246,8 +334,10 @@ int main(int argc, char* argv[]) {
 
     while (!feof(command_file)) {
         // Update cwd
-        getcwd(cwd, MAXPATHLEN);
-
+        if (getcwd(cwd, MAXPATHLEN) == NULL) {
+            perror("Unable to get current dir: ");
+            return -1;
+        } 
         // Print the prompt at the beginning of the line
         if (needprompt && !quiet) {
             printf("sh61[%d]:%s:$ ", getpid(), cwd);
