@@ -290,32 +290,33 @@ void eval_line(const char* s) {
             char* redir_op = malloc(strlen(token) + 1); // +1 to account for \0 ending
             strcpy(redir_op, token);
             s = parse_shell_token(s, &type, &token);
-            const char* path = s;
+            const char* path = token;
             if (strcmp(redir_op, "<") == 0) {
                 if ( (redir_fd = open(path, O_RDONLY)) == -1)
                     perror("Failed to open redirection file: ");
                 current->stdin_fd = redir_fd;
             }
             else if (strcmp(redir_op, ">") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, S_IWUSR)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, 0666)) == -1)
                     perror("Failed to open redirection file: ");
                 current->stdout_fd = redir_fd;
             }
             else if (strcmp(redir_op, ">>") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IWUSR)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU)) == -1)
                     perror("Failed to open redirection file: ");
                 current->stdout_fd = redir_fd;
             }
             else if (strcmp(redir_op, "2>") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, S_IWUSR)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, S_IRWXU)) == -1)
                     perror("Failed to open redirection file: ");
                 current->stderr_fd = redir_fd;
             }
              else if (strcmp(redir_op, "2>>") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IWUSR)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU)) == -1)
                     perror("Failed to open redirection file: ");
                 current->stderr_fd = redir_fd;
-            }           
+            }
+            free(redir_op);
         }
     }
     // execute it
