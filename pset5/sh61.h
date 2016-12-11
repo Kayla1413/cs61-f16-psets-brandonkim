@@ -28,6 +28,9 @@
 #define PIPE_OUT	    456
 #define PIPE_NONE	    0
 
+// Exit status for file redirection failure
+#define REDIRECT_FAIL       1
+
 // parse_shell_token(str, type, token)
 //    Parse the next token from the shell command `str`. Stores the type of
 //    the token in `*type`; this is one of the TOKEN_ constants. Stores the

@@ -128,6 +128,7 @@ static void command_append_arg(command* c, char* word) {
 //       its own process group (if `pgid == 0`). To avoid race conditions,
 //       this will require TWO calls to `setpgid`.
 
+// Returns 0 for 'cd' to signal that no child was made
 pid_t start_command(command* c, pid_t pgid) {
     (void) pgid;
     pid_t child_pid;
@@ -136,10 +137,25 @@ pid_t start_command(command* c, pid_t pgid) {
         debug_print_command(c);
     // Handle built-ins before possibly forking
     if (strcmp(c->argv[0], BUILTIN_CD) == 0) {
+        int stderr_backup = dup(STDERR_FILENO);
+        int stdout_backup = dup(STDOUT_FILENO);
+        dup2(c->stderr_fd, STDERR_FILENO);
+        dup2(c->stdout_fd, STDOUT_FILENO);
         if (chdir(c->argv[1]) == -1) {
             perror("failed to change cwd: ");
+            c->exit_status = 1; // Just copying bash here
+            dup2(stderr_backup, STDERR_FILENO);
+            dup2(stdout_backup, STDOUT_FILENO);
+            close(stderr_backup);
+            close(stdout_backup);
             return -1;
-        } else return 0;
+        } else {
+            dup2(stderr_backup, STDERR_FILENO);
+            dup2(stdout_backup, STDOUT_FILENO);
+            close(stderr_backup);
+            close(stdout_backup);
+            return 0;
+        }
     }
      if (strcmp(c->argv[0], BUILTIN_EXIT) == 0)
        _exit(EXIT_SUCCESS);
@@ -203,23 +219,28 @@ void run_list(command* c) {
     pid_t child;
     current = c;
     while (current->argc != 0) {
-        child = start_command(current, 42); // Change the PGID later
-        if (current->background == 0) {
-	    if(waitpid(child, &status, 0) != child) {
-                perror("failed to wait on child: ");
+        // Check if a file redirection has failed
+        if (current->exit_status != REDIRECT_FAIL) { 
+            child = start_command(current, 312); // Change the PGID later
+            // Background if indicated, or cmd was a 'cd'
+            if (current->background == 0 && child != 0) {
+	        if(waitpid(child, &status, 0) != child) {
+                     perror("failed to wait on child: ");
+                }
             }
         }
-
         if (current->next == NULL) // This was the last command in the list
 	    break;
 
         //Otherwise we still have more to go, check conditionals
-        if ((current->conditional == TOKEN_AND) && WIFEXITED(status) && (WEXITSTATUS(status)) == 0) {
+        if ((current->exit_status != REDIRECT_FAIL) && WIFEXITED(status))
+            current->exit_status = WEXITSTATUS(status);
+        if ((current->conditional == TOKEN_AND) && current->exit_status == 0) {
             current = current->next;
             continue;
         } if (current->conditional == TOKEN_AND)
             break;
-        if ((current->conditional == TOKEN_OR) && WIFEXITED(status) && (WEXITSTATUS(status) != 0)) {
+        if ((current->conditional == TOKEN_OR) && current->exit_status != 0) {
             current = current->next;
             continue;
         } if (current->conditional == TOKEN_OR)
@@ -228,7 +249,7 @@ void run_list(command* c) {
 	    current = current->next;
 	    continue;
 	}
-	// We should have continued by now...
+	// We should have continued or broken by now...
 	printf("Uncaught conditions Considered Harmful... \n");
     }
 }
@@ -292,28 +313,39 @@ void eval_line(const char* s) {
             s = parse_shell_token(s, &type, &token);
             const char* path = token;
             if (strcmp(redir_op, "<") == 0) {
-                if ( (redir_fd = open(path, O_RDONLY)) == -1)
+                if ( (redir_fd = open(path, O_RDONLY)) == -1) {
                     perror("Failed to open redirection file: ");
+                    current->exit_status = REDIRECT_FAIL;
+                }
                 current->stdin_fd = redir_fd;
             }
+            // n.b. File creation modes are Unix permission octals, not Satanism
             else if (strcmp(redir_op, ">") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, 0666)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, 0666)) == -1) {
                     perror("Failed to open redirection file: ");
+                    current->exit_status = REDIRECT_FAIL;
+               } 
                 current->stdout_fd = redir_fd;
             }
             else if (strcmp(redir_op, ">>") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, 0666)) == -1) {
+                    current->exit_status = REDIRECT_FAIL;
                     perror("Failed to open redirection file: ");
+                }
                 current->stdout_fd = redir_fd;
             }
             else if (strcmp(redir_op, "2>") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, S_IRWXU)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT, 0666)) == -1) {
+                    current->exit_status = REDIRECT_FAIL;
                     perror("Failed to open redirection file: ");
+                }
                 current->stderr_fd = redir_fd;
             }
              else if (strcmp(redir_op, "2>>") == 0) {
-                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, S_IRWXU)) == -1)
+                if ( (redir_fd = open(path, O_WRONLY|O_CREAT|O_APPEND, 0666)) == -1) {
+                    current->exit_status = REDIRECT_FAIL;
                     perror("Failed to open redirection file: ");
+                }
                 current->stderr_fd = redir_fd;
             }
             free(redir_op);
