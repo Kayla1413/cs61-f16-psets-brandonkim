@@ -17,6 +17,7 @@ OTHER COLLABORATORS AND CITATIONS (if any):
 KNOWN BUGS (if any):
 
 The testing server went down before I could finish it in its entirety. could not check parts 3 + 4, and could not attempt part 5.
+Bad file descriptor error.
 
 NOTES FOR THE GRADER (if any):
 

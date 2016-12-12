@@ -238,32 +238,33 @@ struct conn_emt {
     conn_emt *next; 
 }; 
 
+pthread_mutex_t conn_mutex;
 pthread_mutex_t mutex;
+pthread_mutex_t delay_mutex;
 pthread_cond_t condvar;
 conn_emt* conn_list = NULL; 
 
-http_connection *get_connected(void) { 
 
-    pthread_mutex_lock(&mutex); 
+//Phase 3, gives bad file descriptor
+http_connection* get_connected(void) { 
+
+    pthread_mutex_lock(&conn_mutex); 
 
     conn_emt *entry = conn_list; 
     conn_emt *prev = NULL; 
 
     while (entry != NULL) { 
-        if ((entry->conn->state == HTTP_DONE) || (entry->conn->state == HTTP_REQUEST)) { 
+        if (entry->conn->state == HTTP_DONE) { 
+            return entry->conn;   
             break; 
-        } else { 
-            if (entry->conn->state == HTTP_BROKEN) { 
-                http_close(entry->conn); 
-                entry->conn = http_connect(pong_addr); 
-            } 
+        } else {
             prev = entry; 
             entry = entry->next; 
         } 
     } 
 
     if (entry == NULL) { 
-        entry = (conn_emt *) malloc(sizeof(conn_emt)); 
+        entry = (conn_emt*) malloc(sizeof(conn_emt)); 
         entry->conn = http_connect(pong_addr); 
         entry->next = NULL; 
         if (prev == NULL) { 
@@ -273,10 +274,11 @@ http_connection *get_connected(void) {
         } 
     } 
 
-    pthread_mutex_unlock(&mutex); 
+    pthread_mutex_unlock(&conn_mutex); 
 
     return entry->conn;     
 }
+
 
 
 // pong_thread(threadarg)
@@ -293,6 +295,7 @@ void* pong_thread(void* threadarg) {
              pa.x, pa.y);
 
     http_connection* conn = get_connected();
+    //http_connection* conn = http_connect(pong_addr);
     http_send_request(conn, url);
     http_receive_response_headers(conn);
 
@@ -303,6 +306,7 @@ void* pong_thread(void* threadarg) {
         if (K < 128)
             K = K*2;
         conn = get_connected();
+        //conn = http_connect(pong_addr);
         http_send_request(conn, url);
         http_receive_response_headers(conn);
     }
@@ -325,9 +329,9 @@ void* pong_thread(void* threadarg) {
     }
     //Phase 4, congestion + waiting
     if (result > 0) {
-        pthread_mutex_lock(&mutex);
+        pthread_mutex_lock(&delay_mutex);
         usleep(result*1000);
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&delay_mutex);
     }
 
     http_close(conn);
@@ -406,6 +410,8 @@ int main(int argc, char** argv) {
 
     // initialize global synchronization objects
     pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&conn_mutex, NULL);
+    pthread_mutex_init(&delay_mutex, NULL);
     pthread_cond_init(&condvar, NULL);
 
     // play game
