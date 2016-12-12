@@ -140,10 +140,9 @@ void run_list(command* c) {
     while (next->argc != 0) {
         child = start_command(next, 42);
         if (next->background == 0)
-	    waitpid(child, &status, 0);
+            waitpid(child, &status, 0);
         if (next->next == NULL) // This was the last command in the list
-	    break;
-
+            break;
         //Otherwise we still have more to go, check conditionals
         if ((next->conditional == TOKEN_AND) && WIFEXITED(status) && (WEXITSTATUS(status)) == 0) {
             next = next->next;

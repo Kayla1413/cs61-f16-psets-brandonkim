@@ -232,8 +232,52 @@ typedef struct pong_args {
     int y;
 } pong_args;
 
+typedef struct conn_emt conn_emt; 
+struct conn_emt { 
+    http_connection *conn;
+    conn_emt *next; 
+}; 
+
 pthread_mutex_t mutex;
 pthread_cond_t condvar;
+conn_emt* conn_list = NULL; 
+
+http_connection *get_connected(void) { 
+
+    pthread_mutex_lock(&mutex); 
+
+    conn_emt *entry = conn_list; 
+    conn_emt *prev = NULL; 
+
+    while (entry != NULL) { 
+        if ((entry->conn->state == HTTP_DONE) || (entry->conn->state == HTTP_REQUEST)) { 
+            break; 
+        } else { 
+            if (entry->conn->state == HTTP_BROKEN) { 
+                http_close(entry->conn); 
+                entry->conn = http_connect(pong_addr); 
+            } 
+            prev = entry; 
+            entry = entry->next; 
+        } 
+    } 
+
+    if (entry == NULL) { 
+        entry = (conn_emt *) malloc(sizeof(conn_emt)); 
+        entry->conn = http_connect(pong_addr); 
+        entry->next = NULL; 
+        if (prev == NULL) { 
+            conn_list = entry; 
+        } else { 
+            prev->next = entry; 
+        } 
+    } 
+
+    pthread_mutex_unlock(&mutex); 
+
+    return entry->conn;     
+}
+
 
 // pong_thread(threadarg)
 //    Connect to the server at the position indicated by `threadarg`
@@ -248,13 +292,29 @@ void* pong_thread(void* threadarg) {
     snprintf(url, sizeof(url), "move?x=%d&y=%d&style=on",
              pa.x, pa.y);
 
-    http_connection* conn = http_connect(pong_addr);
+    http_connection* conn = get_connected();
     http_send_request(conn, url);
     http_receive_response_headers(conn);
+
+    //Phase 1, lost connection
+    int K = 100000;
+    while ((conn->status_code == -1) && (conn->state == HTTP_BROKEN)) {
+        usleep(K);
+        if (K < 128)
+            K = K*2;
+        conn = get_connected();
+        http_send_request(conn, url);
+        http_receive_response_headers(conn);
+    }
+
     if (conn->status_code != 200)
         fprintf(stderr, "%.3f sec: warning: %d,%d: "
                 "server returned status %d (expected 200)\n",
                 elapsed(), pa.x, pa.y, conn->status_code);
+
+    //Phase 2, delayed body
+    // signal the main thread to continue
+    pthread_cond_signal(&condvar);
 
     http_receive_response_body(conn);
     double result = strtod(conn->buf, NULL);
@@ -263,11 +323,15 @@ void* pong_thread(void* threadarg) {
                 elapsed(), http_truncate_response(conn));
         exit(1);
     }
+    //Phase 4, congestion + waiting
+    if (result > 0) {
+        pthread_mutex_lock(&mutex);
+        usleep(result*1000);
+        pthread_mutex_unlock(&mutex);
+    }
 
     http_close(conn);
 
-    // signal the main thread to continue
-    pthread_cond_signal(&condvar);
     // and exit!
     pthread_exit(NULL);
 }
