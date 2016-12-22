@@ -3,7 +3,9 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <sys/param.h>
+// MIS edits to run on grading server
+//#include <sys/param.h>
+#define MAXPATHLEN 4096
 
 // struct command
 //    Data structure describing a command. Add your own stuff.
