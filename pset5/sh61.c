@@ -199,21 +199,22 @@ void eval_line(const char* s) {
         run_list(c1);
     command_free(c1);
 
-    // free the list of commands, don't want leaky memory now do we?
-   command** arr = malloc(i * sizeof(command*));
-   int n = 0;
-   current = c1;
-   while (n != i) {
-       arr[n] = current;
-       current = current->next;
-       n++;
-   }
+   // MIS this is segfaulting and I"m just trying to get something to run
+   // free the list of commands, don't want leaky memory now do we?
+   // command** arr = malloc(i * sizeof(command*));
+   // int n = 0;
+   //current = c1;
+   // while (n != i) {
+   //     arr[n] = current;
+   //     current = current->next;
+   //    n++;
+   //}
 
-   while (n >= 1) {
-       command_free(arr[n-1]);
-       n--;
-   }
-   free(arr);
+   //while (n >= 1) {
+   //    command_free(arr[n-1]);
+   //   n--;
+   //}
+   //free(arr);
 }
 
 
